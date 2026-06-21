@@ -1,20 +1,15 @@
-export function drawCharts(data, srData) {
+export function drawCharts(data, grid) {
 
-    const entries = data?.entries || [];
-    const treatments = data?.treatments || [];
-
-    const sr = srData?.split || [];
-
-    drawGlucose(entries);
-    drawSR(sr);
-    drawCOBIOB(treatments);
+    drawGlucose(grid);
+    drawSR(grid);
+    drawCOBIOB(grid);
 }
 
 // =====================================================
-// 📊 GLUCOSE (0–22.5 mmol/L + time grid + current hour)
+// 📊 GLUCOSE (0–22.5 mmol/L, hourly grid)
 // =====================================================
 
-function drawGlucose(entries) {
+function drawGlucose(grid) {
 
     const el = document.getElementById("glucoseChart");
     el.innerHTML = "";
@@ -22,28 +17,21 @@ function drawGlucose(entries) {
     const canvas = createCanvas(el, "Glucose (mmol/L)");
     const ctx = canvas.getContext("2d");
 
-    const now = new Date();
-    const currentHour = now.getHours();
+    const values = grid.map(h => h.glucose);
 
-    const filtered = entries
-        .filter(e => {
-            const t = new Date(e.dateString || e.date);
-            return t.getHours() <= currentHour;
-        })
-        .map(e => mgdlToMmol(e.sgv || 0));
-
-    drawTimeChart(ctx, filtered, {
+    drawTimeGridChart(ctx, values, {
         minY: 0,
         maxY: 22.5,
-        color: "#4fc3f7"
+        color: "#4fc3f7",
+        stepY: 1
     });
 }
 
 // =====================================================
-// 📈 SR (0.5–1.5 + avg line)
+// 📈 SR (0.5–1.5 + hourly avg + dashed mean)
 // =====================================================
 
-function drawSR(sr) {
+function drawSR(grid) {
 
     const el = document.getElementById("srChart");
     el.innerHTML = "";
@@ -51,27 +39,27 @@ function drawSR(sr) {
     const canvas = createCanvas(el, "Sensitivity Ratio");
     const ctx = canvas.getContext("2d");
 
-    const values = sr.map(e => e.sr || 0);
+    const values = grid.map(h => h.sr);
 
     const avg =
-        values.reduce((a, b) => a + b, 0) / (values.length || 1);
+        values.reduce((a, b) => a + b, 0) / (values.filter(v => v !== null).length || 1);
 
-    drawTimeChart(ctx, values, {
+    drawTimeGridChart(ctx, values, {
         minY: 0.5,
         maxY: 1.5,
         color: "#ffb74d",
+        stepY: 0.1,
         avgLine: avg
     });
 }
 
 // =====================================================
-// 🍭 COB / 💉 IOB (упрощённо из treatments)
+// 💉🍭 COB / IOB (hourly)
 // =====================================================
 
-function drawCOBIOB(treatments) {
+function drawCOBIOB(grid) {
 
     const el = document.getElementById("srChart");
-    if (!el) return;
 
     const canvas = document.createElement("canvas");
     canvas.width = 900;
@@ -83,23 +71,24 @@ function drawCOBIOB(treatments) {
 
     const ctx = canvas.getContext("2d");
 
-    const iob = treatments.map(t => t.insulin || 0);
-    const cob = treatments.map(t => t.carbs || 0);
+    const iob = grid.map(h => h.iob);
+    const cob = grid.map(h => h.cob);
 
     drawTwoLines(ctx, iob, cob);
 }
 
 // =====================================================
-// CORE TIME CHART
+// 🧠 CORE 24H GRID CHART
 // =====================================================
 
-function drawTimeChart(ctx, data, opts) {
+function drawTimeGridChart(ctx, data, opts) {
 
     const w = ctx.canvas.width;
     const h = ctx.canvas.height;
 
-    drawGrid(ctx, w, h, opts.minY, opts.maxY);
+    drawGrid(ctx, w, h, opts.minY, opts.maxY, opts.stepY);
 
+    // LINE
     ctx.strokeStyle = opts.color;
     ctx.lineWidth = 2;
 
@@ -107,7 +96,7 @@ function drawTimeChart(ctx, data, opts) {
 
     data.forEach((v, i) => {
 
-        const x = (i / data.length) * w;
+        const x = (i / 23) * w;
         const y = h - ((v - opts.minY) / (opts.maxY - opts.minY)) * h;
 
         if (i === 0) ctx.moveTo(x, y);
@@ -116,14 +105,14 @@ function drawTimeChart(ctx, data, opts) {
 
     ctx.stroke();
 
-    // AVG LINE (SR)
+    // AVG LINE (SR mean)
     if (opts.avgLine !== undefined) {
 
         const y =
             h - ((opts.avgLine - opts.minY) / (opts.maxY - opts.minY)) * h;
 
-        ctx.strokeStyle = "rgba(255,255,255,0.4)";
-        ctx.setLineDash([5, 5]);
+        ctx.strokeStyle = "rgba(255,255,255,0.35)";
+        ctx.setLineDash([6, 4]);
 
         ctx.beginPath();
         ctx.moveTo(0, y);
@@ -135,33 +124,34 @@ function drawTimeChart(ctx, data, opts) {
 }
 
 // =====================================================
-// GRID + AXIS
+// 📐 GRID (24h + values)
 // =====================================================
 
-function drawGrid(ctx, w, h, minY, maxY) {
+function drawGrid(ctx, w, h, minY, maxY, stepY) {
 
     ctx.strokeStyle = "#2a2f3a";
     ctx.lineWidth = 1;
+    ctx.fillStyle = "#aaa";
 
-    // horizontal
-    for (let i = 0; i <= 5; i++) {
+    // horizontal (values)
+    const steps = Math.round((maxY - minY) / stepY);
 
-        const y = (h / 5) * i;
+    for (let i = 0; i <= steps; i++) {
+
+        const y = (h / steps) * i;
+
+        const value = (maxY - i * stepY).toFixed(1);
 
         ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(w, y);
         ctx.stroke();
 
-        const val =
-            (maxY - ((maxY - minY) / 5) * i).toFixed(1);
-
-        ctx.fillStyle = "#aaa";
-        ctx.fillText(val, 5, y - 2);
+        ctx.fillText(value, 5, y - 2);
     }
 
-    // vertical (time)
-    for (let i = 0; i <= 24; i += 3) {
+    // vertical (hours)
+    for (let i = 0; i <= 24; i++) {
 
         const x = (w / 24) * i;
 
@@ -170,25 +160,25 @@ function drawGrid(ctx, w, h, minY, maxY) {
         ctx.lineTo(x, h);
         ctx.stroke();
 
-        ctx.fillStyle = "#666";
-        ctx.fillText(`${i}:00`, x + 2, h - 5);
+        if (i % 3 === 0) {
+            ctx.fillText(`${i}:00`, x + 2, h - 5);
+        }
     }
 }
 
 // =====================================================
-// COBO / IOB SIMPLE
+// 💉🍭 LINES (COB/IOB)
 // =====================================================
 
-function drawTwoLines(ctx, iob, cob) {
+function drawTwoLines(ctx, a, b) {
 
     const w = ctx.canvas.width;
     const h = ctx.canvas.height;
 
-    const max =
-        Math.max(...iob, ...cob, 1);
+    const max = Math.max(...a, ...b, 1);
 
-    drawLine(ctx, iob, "#ff5252", w, h, max);
-    drawLine(ctx, cob, "#4caf50", w, h, max);
+    drawLine(ctx, a, "#ff5252", w, h, max);
+    drawLine(ctx, b, "#4caf50", w, h, max);
 }
 
 function drawLine(ctx, data, color, w, h, max) {
@@ -200,7 +190,7 @@ function drawLine(ctx, data, color, w, h, max) {
 
     data.forEach((v, i) => {
 
-        const x = (i / data.length) * w;
+        const x = (i / 23) * w;
         const y = h - (v / max) * h;
 
         if (i === 0) ctx.moveTo(x, y);
@@ -211,25 +201,21 @@ function drawLine(ctx, data, color, w, h, max) {
 }
 
 // =====================================================
-// HELPERS
+// 🧩 HELPERS
 // =====================================================
-
-function mgdlToMmol(v) {
-    return v / 18;
-}
 
 function createCanvas(el, title) {
 
-    const titleEl = document.createElement("div");
-    titleEl.textContent = title;
-    titleEl.style.marginBottom = "5px";
+    const t = document.createElement("div");
+    t.textContent = title;
+    t.style.marginBottom = "6px";
 
-    const canvas = document.createElement("canvas");
-    canvas.width = 900;
-    canvas.height = 220;
+    const c = document.createElement("canvas");
+    c.width = 900;
+    c.height = 220;
 
-    el.appendChild(titleEl);
-    el.appendChild(canvas);
+    el.appendChild(t);
+    el.appendChild(c);
 
-    return canvas;
+    return c;
 }
