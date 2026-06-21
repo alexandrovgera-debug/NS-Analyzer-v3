@@ -1,7 +1,6 @@
 import NightscoutAPI from "./api/nightscoutAPI.js";
 
 import SRService from "./core/srService.js";
-import TimeGridAggregator from "./core/timeGridAggregator.js";
 
 import BasalAnalyzer from "./analyzers/basalAnalyzer.js";
 import CRAnalyzer from "./analyzers/crAnalyzer.js";
@@ -35,7 +34,7 @@ async function run() {
 
         cache = await api.load();
 
-        const days = getLast7Days(cache.entries || []);
+        const days = getLastDays(cache.entries || [], 7);
 
         fillDays(days);
 
@@ -47,12 +46,13 @@ async function run() {
         alert(e.message);
 
     } finally {
-
         button.disabled = false;
     }
 }
 
-// ---------------- RUN ----------------
+// =====================================================
+// MAIN RUN
+// =====================================================
 
 function runFromCache() {
 
@@ -62,38 +62,21 @@ function runFromCache() {
 
     const filtered = filterByDay(cache, day);
 
-    // ==============================
-    // SR LAYER
-    // ==============================
     const sr = SRService.build(filtered);
 
-    // ==============================
-    // 24H GRID (КЛЮЧЕВОЙ СЛОЙ)
-    // ==============================
-    const grid = TimeGridAggregator.build({
-        entries: filtered.entries,
-        treatments: filtered.treatments,
-        sr
-    });
-
-    // ==============================
-    // ANALYZERS (таблицы)
-    // ==============================
     const basal = new BasalAnalyzer().analyze(sr.split);
     const cr = new CRAnalyzer().analyze(sr.raw, cache.profile);
     const isf = new ISFAnalyzer().analyze(sr.raw, cache.profile);
 
     renderTables({ basal, cr, isf });
-
-    // ==============================
-    // CHARTS (ВАЖНО: grid, не filtered)
-    // ==============================
-    drawCharts(cache, grid);
+    drawCharts(filtered, sr);
 }
 
-// ---------------- DAYS ----------------
+// =====================================================
+// DAYS
+// =====================================================
 
-function getLast7Days(entries) {
+function getLastDays(entries, limit = 7) {
 
     const set = new Set();
 
@@ -101,10 +84,12 @@ function getLast7Days(entries) {
 
         const d = new Date(e.dateString || e.date);
 
-        set.add(d.toISOString().slice(0, 10));
+        if (!isNaN(d)) {
+            set.add(d.toISOString().slice(0, 10));
+        }
     }
 
-    return [...set].sort().slice(-7);
+    return [...set].sort().slice(-limit);
 }
 
 function fillDays(days) {
@@ -123,11 +108,12 @@ function fillDays(days) {
 }
 
 function getToday() {
-
     return new Date().toISOString().slice(0, 10);
 }
 
-// ---------------- FILTER ----------------
+// =====================================================
+// FILTER BY DAY (STRICT + SAFE)
+// =====================================================
 
 function filterByDay(data, day) {
 
@@ -154,5 +140,9 @@ function filterByDay(data, day) {
         profile: data.profile
     };
 }
+
+// =====================================================
+// AUTO START
+// =====================================================
 
 window.onload = run;
