@@ -63,7 +63,7 @@ function runFromCache() {
 
     const sr = SRService.build(filtered);
 
-    const basal = new BasalAnalyzer().analyze(sr);
+    const basal = new BasalAnalyzer().analyze(sr.split);
     const cr = new CRAnalyzer().analyze(sr.raw, cache.profile);
     const isf = new ISFAnalyzer().analyze(sr.raw, cache.profile);
 
