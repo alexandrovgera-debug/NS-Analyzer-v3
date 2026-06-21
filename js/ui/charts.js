@@ -1,25 +1,31 @@
 export function drawCharts(data, srData) {
 
-    drawGlucose(data.entries || []);
-    drawSR(srData.raw || []);
+    drawGlucose(data?.entries || []);
+    drawSR(srData?.raw || []);
 }
 
-// ---------------- GLUCOSE (mmol/L + grid) ----------------
+// ---------------- GLUCOSE ----------------
 
 function drawGlucose(entries) {
 
     const el = document.getElementById("glucoseChart");
+    if (!el) return;
+
     el.innerHTML = "";
 
-    const canvas = createCanvas(el, "Glucose (mmol/L)");
+    const canvas = document.createElement("canvas");
+    canvas.width = 900;
+    canvas.height = 220;
+
+    el.appendChild(document.createTextNode("Glucose (mmol/L)"));
+    el.appendChild(document.createElement("br"));
+    el.appendChild(canvas);
+
     const ctx = canvas.getContext("2d");
 
-    const values = entries.slice(-200).map(e => mgdlToMmol(e.sgv));
+    const values = entries.map(e => mgdlToMmol(e.sgv || 0));
 
-    drawChart(ctx, values, {
-        color: "#4fc3f7",
-        yLabel: "mmol/L"
-    });
+    draw(ctx, values);
 }
 
 // ---------------- SR ----------------
@@ -27,32 +33,62 @@ function drawGlucose(entries) {
 function drawSR(sr) {
 
     const el = document.getElementById("srChart");
+    if (!el) return;
+
     el.innerHTML = "";
 
-    const canvas = createCanvas(el, "Sensitivity Ratio");
+    const canvas = document.createElement("canvas");
+    canvas.width = 900;
+    canvas.height = 220;
+
+    el.appendChild(document.createTextNode("SR"));
+    el.appendChild(document.createElement("br"));
+    el.appendChild(canvas);
+
     const ctx = canvas.getContext("2d");
 
-    const values = sr.slice(-200).map(e => e.sr);
+    const values = sr.map(e => e.sr || 0);
 
-    drawChart(ctx, values, {
-        color: "#ffb74d",
-        yLabel: "SR"
-    });
+    draw(ctx, values);
 }
 
-// ---------------- CORE DRAW ----------------
+// ---------------- CORE ----------------
 
-function drawChart(ctx, data, opts) {
+function draw(ctx, data) {
 
     const w = ctx.canvas.width;
     const h = ctx.canvas.height;
 
-    const max = Math.max(...data, 1);
-    const min = Math.min(...data, 0);
+    if (!data.length) {
+        ctx.fillText("no data", 10, 20);
+        return;
+    }
 
-    drawGrid(ctx, w, h);
+    const max = Math.max(...data);
+    const min = Math.min(...data);
 
-    ctx.strokeStyle = opts.color;
+    // GRID
+    ctx.strokeStyle = "#333";
+    ctx.lineWidth = 1;
+
+    for (let i = 0; i <= 5; i++) {
+
+        const y = (h / 5) * i;
+
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+        ctx.stroke();
+
+        // значения слева
+        const value = (max - ((max - min) / 5) * i).toFixed(1);
+
+        ctx.fillStyle = "#aaa";
+        ctx.fillText(value, 5, y - 2);
+    }
+
+    // LINE
+    ctx.strokeStyle = "#4fc3f7";
     ctx.lineWidth = 2;
     ctx.beginPath();
 
@@ -68,56 +104,8 @@ function drawChart(ctx, data, opts) {
     ctx.stroke();
 }
 
-// ---------------- GRID ----------------
+// ---------------- mmol ----------------
 
-function drawGrid(ctx, w, h) {
-
-    ctx.strokeStyle = "#2a2f3a";
-    ctx.lineWidth = 1;
-
-    const steps = 5;
-
-    for (let i = 0; i <= steps; i++) {
-
-        const y = (h / steps) * i;
-
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(w, y);
-        ctx.stroke();
-    }
-
-    for (let i = 0; i <= steps; i++) {
-
-        const x = (w / steps) * i;
-
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, h);
-        ctx.stroke();
-    }
-}
-
-// ---------------- mmol conversion ----------------
-
-function mgdlToMmol(mgdl) {
-    return +(mgdl / 18.0).toFixed(1);
-}
-
-// ---------------- canvas ----------------
-
-function createCanvas(el, title) {
-
-    const titleEl = document.createElement("div");
-    titleEl.textContent = title;
-    titleEl.style.marginBottom = "6px";
-
-    const canvas = document.createElement("canvas");
-    canvas.width = el.clientWidth || 800;
-    canvas.height = 220;
-
-    el.appendChild(titleEl);
-    el.appendChild(canvas);
-
-    return canvas;
+function mgdlToMmol(v) {
+    return (v / 18).toFixed(1);
 }
