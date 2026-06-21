@@ -26,10 +26,25 @@
             cursor: pointer;
         }
 
+        .panel {
+            background: #151922;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .layout {
+            display: flex;
+            gap: 20px;
+        }
+
+        .left, .right {
+            flex: 1;
+        }
+
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 20px;
         }
 
         th, td {
@@ -42,28 +57,19 @@
             background: #1a1d25;
         }
 
-        .layout {
-            display: flex;
-            gap: 20px;
-        }
-
-        .left, .right {
-            flex: 1;
-        }
-
-        .panel {
+        /* CHART AREAS */
+        #glucoseChart,
+        #srChart,
+        #overlayChart {
             background: #151922;
-            padding: 10px;
+            padding: 12px;
+            margin-top: 15px;
             border-radius: 8px;
-            margin-bottom: 20px;
+            min-height: 120px;
         }
 
-        #glucoseChart, #srChart {
-            background: #151922;
-            padding: 10px;
-            margin-top: 20px;
-            border-radius: 8px;
-            min-height: 60px;
+        .title {
+            margin: 0 0 10px 0;
         }
     </style>
 </head>
@@ -72,6 +78,7 @@
 
     <h2>NS Analyzer v3</h2>
 
+    <!-- CONTROL PANEL -->
     <div class="panel">
 
         <input id="url" placeholder="Nightscout URL" style="width:300px;" />
@@ -82,22 +89,23 @@
 
     </div>
 
+    <!-- TABLES -->
     <div class="layout">
 
         <div class="left panel">
-            <h3>Basal</h3>
+            <h3 class="title">Basal</h3>
             <table id="basalTable"></table>
         </div>
 
         <div class="right">
 
             <div class="panel">
-                <h3>CR</h3>
+                <h3 class="title">CR</h3>
                 <table id="crTable"></table>
             </div>
 
             <div class="panel">
-                <h3>ISF</h3>
+                <h3 class="title">ISF</h3>
                 <table id="isfTable"></table>
             </div>
 
@@ -105,8 +113,10 @@
 
     </div>
 
+    <!-- CHARTS -->
     <div id="glucoseChart"></div>
     <div id="srChart"></div>
+    <div id="overlayChart"></div>
 
     <script type="module" src="./js/app.js"></script>
 
