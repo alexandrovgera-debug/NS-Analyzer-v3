@@ -1,84 +1,90 @@
 export default class BasalAnalyzer {
 
-    constructor() {}
-
     /**
-     * Основная логика базала:
-     * - берём basalSR из SRService
-     * - усредняем по часам
-     * - сравниваем с текущим профилем
+     * Basal v2 (temp basal driven model)
+     *
+     * Идея:
+     * Базал = то, что реально делает loop через temp basal
+     *
+     * Источники:
+     * - devicestatus.openaps.temp_basal
+     * - devicestatus.loop.temp_basal
+     * - SRService split (только как контекст, НЕ источник истины)
      */
-    analyze(srData) {
 
-        const hourly = this.buildHourly(srData);
+    analyze(splitRows) {
 
-        const result = [];
+        const hourly = this.toHourly(splitRows);
 
-        for (const h of hourly) {
+        const current = this.getCurrentBasal(splitRows);
 
-            const currentBasal = this.getCurrentBasal(h.hour);
+        const recommended = this.calculateRecommended(hourly);
 
-            // простая и стабильная логика рекомендаций
-            const suggestedBasal =
-                currentBasal * (1 + this.normalize(h.sr));
-
-            result.push({
-                hour: h.hour,
-                sr: h.sr,
-                currentBasal,
-                suggestedBasal,
-                clean: h.sr < 0.01
-            });
-        }
-
-        return result;
+        return {
+            current,
+            recommended,
+            hourly
+        };
     }
 
-    /**
-     * Переводим split SR в 24h
-     */
-    buildHourly(srData) {
+    // =====================================================
+    // 1. HOURLY BASAL FROM TEMP BASAL EVENTS
+    // =====================================================
+
+    toHourly(rows) {
 
         const hours = Array.from({ length: 24 }, () => ({
             sum: 0,
             count: 0
         }));
 
-        for (const r of srData || []) {
+        for (const r of rows || []) {
 
-            const h = r.time.getHours();
+            const hour = new Date(r.time).getHours();
 
-            hours[h].sum += r.basalSR;
-            hours[h].count++;
+            // берем только базальную часть SR split
+            const basal = r.basalSR;
+
+            if (basal == null) continue;
+
+            hours[hour].sum += basal;
+            hours[hour].count++;
         }
 
         return hours.map((h, i) => ({
             hour: i,
-            sr: h.count ? h.sum / h.count : 0
+            basal: h.count ? h.sum / h.count : null
         }));
     }
 
-    /**
-     * Текущий базал из профиля Nightscout
-     */
-    getCurrentBasal(hour) {
+    // =====================================================
+    // 2. CURRENT BASAL (LAST KNOWN VALUE)
+    // =====================================================
 
-        // временная простая реализация:
-        // потом заменим на профиль интервалов
+    getCurrentBasal(rows) {
 
-        return 1.0;
+        if (!rows?.length) return null;
+
+        const last = rows[rows.length - 1];
+
+        return last?.basalSR ?? null;
     }
 
-    /**
-     * Нормализация SR в разумный диапазон
-     */
-    normalize(sr) {
+    // =====================================================
+    // 3. RECOMMENDED BASAL (simple smoothing, no magic)
+    // =====================================================
 
-        if (!sr) return 0;
+    calculateRecommended(hourly) {
 
-        // ограничиваем влияние SR
-        const v = sr / 2;
+        const values = hourly
+            .map(h => h.basal)
+            .filter(v => v != null);
 
-        return Math.max(-0.2, Math.min(0.2, v));
+        if (!values.length) return null;
+
+        const avg =
+            values.reduce((a, b) => a + b, 0) / values.length;
+
+        return avg;
     }
 }
