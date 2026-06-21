@@ -1,96 +1,96 @@
-export function renderTables({ basal, cr, isf }) {
+export function renderTables(data) {
 
-    renderBasal(basal);
-    renderCR(cr);
-    renderISF(isf);
+    renderBasalTable(data.basal);
+    renderCRTable(data.cr);
+    renderISFTable(data.isf);
 }
 
-// ---------------- BASAL ----------------
+// =====================================================
+// BASAL TABLE (NO HIGHLIGHT, NO OLD MATH)
+// =====================================================
 
-function renderBasal(data) {
+function renderBasalTable(basal) {
 
     const el = document.getElementById("basalTable");
 
-    let html = `
-        <tr>
-            <th>Час</th>
-            <th>SR</th>
-            <th>Базал</th>
-            <th>Реком.</th>
-        </tr>
-    `;
+    if (!el) return;
 
-    for (const r of data || []) {
+    el.innerHTML = "";
 
-        html += `
-            <tr ${r.clean ? 'style="background:#1a3d1f"' : ""}>
-                <td>${r.hour}:00</td>
-                <td>${r.sr.toFixed(2)}</td>
-                <td>${r.currentBasal.toFixed(2)}</td>
-                <td>${r.suggestedBasal.toFixed(2)}</td>
-            </tr>
+    const rows = basal?.hourly || [];
+
+    for (const r of rows) {
+
+        const tr = document.createElement("tr");
+
+        tr.innerHTML = `
+            <td>${r.hour}:00</td>
+            <td>${format(r.basal)}</td>
         `;
-    }
 
-    el.innerHTML = html;
+        el.appendChild(tr);
+    }
 }
 
-// ---------------- CR ----------------
+// =====================================================
+// CR TABLE (pure display)
+// =====================================================
 
-function renderCR(data) {
+function renderCRTable(cr) {
 
     const el = document.getElementById("crTable");
 
-    let html = `
+    if (!el) return;
+
+    el.innerHTML = `
         <tr>
-            <th>Интервал</th>
-            <th>SR</th>
-            <th>CR</th>
-            <th>Реком.</th>
+            <td>Current</td>
+            <td>${format(cr?.current)}</td>
+        </tr>
+        <tr>
+            <td>Recommended</td>
+            <td>${format(cr?.recommended)}</td>
+        </tr>
+        <tr>
+            <td>Samples</td>
+            <td>${cr?.samples ?? 0}</td>
         </tr>
     `;
-
-    for (const r of data || []) {
-
-        html += `
-            <tr>
-                <td>${r.start.toFixed(1)} - ${r.end.toFixed(1)}</td>
-                <td>${r.srAvg.toFixed(2)}</td>
-                <td>${r.currentCR.toFixed(2)}</td>
-                <td>${r.suggestedCR.toFixed(2)}</td>
-            </tr>
-        `;
-    }
-
-    el.innerHTML = html;
 }
 
-// ---------------- ISF ----------------
+// =====================================================
+// ISF TABLE (pure display)
+// =====================================================
 
-function renderISF(data) {
+function renderISFTable(isf) {
 
     const el = document.getElementById("isfTable");
 
-    let html = `
+    if (!el) return;
+
+    el.innerHTML = `
         <tr>
-            <th>Интервал</th>
-            <th>SR</th>
-            <th>ISF</th>
-            <th>Реком.</th>
+            <td>Current</td>
+            <td>${format(isf?.current)}</td>
+        </tr>
+        <tr>
+            <td>Recommended</td>
+            <td>${format(isf?.recommended)}</td>
+        </tr>
+        <tr>
+            <td>Samples</td>
+            <td>${isf?.samples ?? 0}</td>
         </tr>
     `;
+}
 
-    for (const r of data || []) {
+// =====================================================
+// FORMATTER (safe, no NaN)
+// =====================================================
 
-        html += `
-            <tr>
-                <td>${r.start.toFixed(1)} - ${r.end.toFixed(1)}</td>
-                <td>${r.srAvg.toFixed(2)}</td>
-                <td>${r.currentISF.toFixed(2)}</td>
-                <td>${r.suggestedISF.toFixed(2)}</td>
-            </tr>
-        `;
-    }
+function format(v) {
 
-    el.innerHTML = html;
+    if (v == null || isNaN(v)) return "-";
+
+    return Number(v).toFixed(2);
 }
