@@ -28,7 +28,7 @@ export default class NightscoutAPI {
 
     async getEntries() {
 
-        const url = `${this.baseUrl}/api/v1/entries.json?count=1000`;
+        const url = `${this.baseUrl}/api/v1/entries.json?count=3000`;
 
         const res = await fetch(url);
 
@@ -43,7 +43,7 @@ export default class NightscoutAPI {
 
     async getTreatments() {
 
-        const url = `${this.baseUrl}/api/v1/treatments.json?count=1000`;
+        const url = `${this.baseUrl}/api/v1/treatments.json?count=3000`;
 
         const res = await fetch(url);
 
@@ -58,7 +58,7 @@ export default class NightscoutAPI {
 
     async getDeviceStatus() {
 
-        const url = `${this.baseUrl}/api/v1/devicestatus.json?count=1000`;
+        const url = `${this.baseUrl}/api/v1/devicestatus.json?count=3000`;
 
         const res = await fetch(url);
 
