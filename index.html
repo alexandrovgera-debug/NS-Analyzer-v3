@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <title>NS Analyzer v3</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #0f1115;
+            color: #e6e6e6;
+            margin: 0;
+            padding: 20px;
+        }
+
+        input, button, select {
+            padding: 8px;
+            margin: 5px;
+            background: #1a1d25;
+            color: white;
+            border: 1px solid #333;
+        }
+
+        button {
+            cursor: pointer;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+
+        th, td {
+            border: 1px solid #2a2f3a;
+            padding: 6px;
+            text-align: center;
+        }
+
+        th {
+            background: #1a1d25;
+        }
+
+        .layout {
+            display: flex;
+            gap: 20px;
+        }
+
+        .left, .right {
+            flex: 1;
+        }
+
+        .panel {
+            background: #151922;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        #glucoseChart, #srChart {
+            background: #151922;
+            padding: 10px;
+            margin-top: 20px;
+            border-radius: 8px;
+            min-height: 60px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h2>NS Analyzer v3</h2>
+
+    <div class="panel">
+
+        <input id="url" placeholder="Nightscout URL" style="width:300px;" />
+
+        <select id="daySelect"></select>
+
+        <button id="analyze">Анализ</button>
+
+    </div>
+
+    <div class="layout">
+
+        <div class="left panel">
+            <h3>Basal</h3>
+            <table id="basalTable"></table>
+        </div>
+
+        <div class="right">
+
+            <div class="panel">
+                <h3>CR</h3>
+                <table id="crTable"></table>
+            </div>
+
+            <div class="panel">
+                <h3>ISF</h3>
+                <table id="isfTable"></table>
+            </div>
+
+        </div>
+
+    </div>
+
+    <div id="glucoseChart"></div>
+    <div id="srChart"></div>
+
+    <script type="module" src="./js/app.js"></script>
+
+</body>
+</html>
