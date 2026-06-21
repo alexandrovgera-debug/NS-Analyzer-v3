@@ -1,87 +1,111 @@
 export default class ISFAnalyzer {
 
-    constructor() {}
+    /**
+     * ISF v2 (glucose response based)
+     *
+     * Идея:
+     * ISF = delta glucose / insulin
+     *
+     * Берём:
+     * - entries (glucose curve)
+     * - treatments (insulin)
+     */
 
-    analyze(srData, profile) {
+    analyze(srRows, profile) {
 
-        const isfProfile = profile?.isf || [];
+        const insulinEvents = this.extractInsulin(srRows);
 
-        const intervals = this.buildIntervals(isfProfile);
+        const responses = this.calculateResponses(srRows, insulinEvents);
 
-        const result = [];
+        const isf = this.estimateISF(responses);
 
-        for (const i of intervals) {
-
-            const srAvg = this.calcAvgSR(srData, i.start, i.end, "bolusSR");
-
-            const currentISF = i.value;
-
-            const suggestedISF =
-                currentISF * this.adjustFactor(srAvg);
-
-            result.push({
-                start: i.start,
-                end: i.end,
-                srAvg,
-                currentISF,
-                suggestedISF
-            });
-        }
-
-        return result;
+        return {
+            current: profile?.isf || null,
+            recommended: isf,
+            samples: responses.length
+        };
     }
 
-    buildIntervals(profileArray) {
+    // ---------------- INSULIN EVENTS ----------------
 
-        const out = [];
+    extractInsulin(rows) {
 
-        for (let i = 0; i < profileArray.length; i++) {
-
-            const cur = profileArray[i];
-            const next = profileArray[i + 1];
-
-            out.push({
-                start: this.toHour(cur.time),
-                end: next ? this.toHour(next.time) : 24,
-                value: cur.value
-            });
-        }
-
-        return out;
+        return rows
+            .filter(r => (r.insulin || 0) > 0)
+            .map(r => ({
+                time: r.time,
+                insulin: r.insulin
+            }));
     }
 
-    calcAvgSR(srData, start, end, field) {
+    // ---------------- GLUCOSE RESPONSE ----------------
 
-        let sum = 0;
-        let count = 0;
+    calculateResponses(rows, insulinEvents) {
 
-        for (const r of srData || []) {
+        const responses = [];
 
-            const h = r.time.getHours();
+        for (const i of insulinEvents) {
 
-            if (h >= start && h < end) {
+            const start = new Date(i.time).getTime();
+            const end = start + 4 * 60 * 60 * 1000;
 
-                sum += r[field] || 0;
-                count++;
+            const before = this.getGlucoseAt(rows, start);
+            const after = this.getGlucoseAt(rows, end);
+
+            if (before == null || after == null) continue;
+
+            const delta = before - after;
+
+            if (i.insulin > 0 && delta !== 0) {
+
+                responses.push({
+                    insulin: i.insulin,
+                    delta
+                });
             }
         }
 
-        return count ? sum / count : 0;
+        return responses;
     }
 
-    adjustFactor(srAvg) {
+    // ---------------- GET GLUCOSE ----------------
 
-        if (!srAvg) return 1;
+    getGlucoseAt(rows, time) {
 
-        const v = srAvg;
+        let closest = null;
+        let minDiff = Infinity;
 
-        return 1 + Math.max(-0.3, Math.min(0.3, v / 2));
+        for (const r of rows) {
+
+            const t = new Date(r.time).getTime();
+
+            const diff = Math.abs(t - time);
+
+            if (diff < minDiff && r.glucose != null) {
+                minDiff = diff;
+                closest = r.glucose;
+            }
+        }
+
+        return closest;
     }
 
-    toHour(t) {
+    // ---------------- ESTIMATION ----------------
 
-        const [h, m] = t.split(":").map(Number);
+    estimateISF(responses) {
 
-        return h + m / 60;
+        if (!responses.length) return null;
+
+        let totalDelta = 0;
+        let totalInsulin = 0;
+
+        for (const r of responses) {
+            totalDelta += r.delta;
+            totalInsulin += r.insulin;
+        }
+
+        if (totalInsulin === 0) return null;
+
+        return totalDelta / totalInsulin;
     }
 }
