@@ -1,6 +1,7 @@
 import NightscoutAPI from "./api/nightscoutAPI.js";
 
 import SRService from "./core/srService.js";
+import TimeGridAggregator from "./core/timeGridAggregator.js";
 
 import BasalAnalyzer from "./analyzers/basalAnalyzer.js";
 import CRAnalyzer from "./analyzers/crAnalyzer.js";
@@ -61,14 +62,33 @@ function runFromCache() {
 
     const filtered = filterByDay(cache, day);
 
+    // ==============================
+    // SR LAYER
+    // ==============================
     const sr = SRService.build(filtered);
 
+    // ==============================
+    // 24H GRID (КЛЮЧЕВОЙ СЛОЙ)
+    // ==============================
+    const grid = TimeGridAggregator.build({
+        entries: filtered.entries,
+        treatments: filtered.treatments,
+        sr
+    });
+
+    // ==============================
+    // ANALYZERS (таблицы)
+    // ==============================
     const basal = new BasalAnalyzer().analyze(sr.split);
     const cr = new CRAnalyzer().analyze(sr.raw, cache.profile);
     const isf = new ISFAnalyzer().analyze(sr.raw, cache.profile);
 
     renderTables({ basal, cr, isf });
-    drawCharts(filtered, sr);
+
+    // ==============================
+    // CHARTS (ВАЖНО: grid, не filtered)
+    // ==============================
+    drawCharts(cache, grid);
 }
 
 // ---------------- DAYS ----------------
@@ -107,6 +127,8 @@ function getToday() {
     return new Date().toISOString().slice(0, 10);
 }
 
+// ---------------- FILTER ----------------
+
 function filterByDay(data, day) {
 
     const start = new Date(day);
@@ -118,14 +140,17 @@ function filterByDay(data, day) {
             const t = new Date(e.dateString || e.date);
             return t >= start && t < end;
         }),
+
         treatments: (data.treatments || []).filter(t => {
             const tt = new Date(t.created_at);
             return tt >= start && tt < end;
         }),
+
         deviceStatus: (data.deviceStatus || []).filter(d => {
             const dt = new Date(d.created_at);
             return dt >= start && dt < end;
         }),
+
         profile: data.profile
     };
 }
