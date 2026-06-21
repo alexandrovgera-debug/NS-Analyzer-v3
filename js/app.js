@@ -1,6 +1,5 @@
 import NightscoutAPI from "./api/nightscoutAPI.js";
 
-import DayService from "./core/dayService.js";
 import SRService from "./core/srService.js";
 
 import BasalAnalyzer from "./analyzers/basalAnalyzer.js";
@@ -24,17 +23,27 @@ async function run() {
 
     try {
 
-        const api = new NightscoutAPI(getUrl());
+        const url = document.getElementById("url").value.trim();
 
-        const raw = await api.load();
+        if (!url) {
+            alert("Введите Nightscout URL");
+            return;
+        }
 
-        cache = raw;
+        const api = new NightscoutAPI(url);
 
-        const days = DayService.getLast7Days(raw);
+        cache = await api.load();
 
-        DayService.fillSelector(daySelect, days);
+        const days = getLast7Days(cache.entries || []);
+
+        fillDays(days);
 
         runFromCache();
+
+    } catch (e) {
+
+        console.error(e);
+        alert(e.message);
 
     } finally {
 
@@ -42,26 +51,83 @@ async function run() {
     }
 }
 
+// ---------------- RUN ----------------
+
 function runFromCache() {
 
     if (!cache) return;
 
-    const day = daySelect.value || DayService.getToday();
+    const day = daySelect.value || getToday();
 
-    const data = DayService.filterDay(cache, day);
+    const filtered = filterByDay(cache, day);
 
-    const sr = SRService.build(data);
+    const sr = SRService.build(filtered);
 
     const basal = new BasalAnalyzer().analyze(sr);
-    const cr = new CRAnalyzer().analyze(sr);
-    const isf = new ISFAnalyzer().analyze(sr);
+    const cr = new CRAnalyzer().analyze(sr.raw, cache.profile);
+    const isf = new ISFAnalyzer().analyze(sr.raw, cache.profile);
 
     renderTables({ basal, cr, isf });
-    drawCharts(data, sr);
+    drawCharts(filtered, sr);
 }
 
-function getUrl() {
-    return document.getElementById("url").value.trim();
+// ---------------- DAYS ----------------
+
+function getLast7Days(entries) {
+
+    const set = new Set();
+
+    for (const e of entries) {
+
+        const d = new Date(e.dateString || e.date);
+
+        set.add(d.toISOString().slice(0, 10));
+    }
+
+    return [...set].sort().slice(-7);
+}
+
+function fillDays(days) {
+
+    daySelect.innerHTML = "";
+
+    for (const d of days) {
+
+        const opt = document.createElement("option");
+
+        opt.value = d;
+        opt.textContent = d;
+
+        daySelect.appendChild(opt);
+    }
+}
+
+function getToday() {
+
+    return new Date().toISOString().slice(0, 10);
+}
+
+function filterByDay(data, day) {
+
+    const start = new Date(day);
+    const end = new Date(day);
+    end.setDate(end.getDate() + 1);
+
+    return {
+        entries: (data.entries || []).filter(e => {
+            const t = new Date(e.dateString || e.date);
+            return t >= start && t < end;
+        }),
+        treatments: (data.treatments || []).filter(t => {
+            const tt = new Date(t.created_at);
+            return tt >= start && tt < end;
+        }),
+        deviceStatus: (data.deviceStatus || []).filter(d => {
+            const dt = new Date(d.created_at);
+            return dt >= start && dt < end;
+        }),
+        profile: data.profile
+    };
 }
 
 window.onload = run;
