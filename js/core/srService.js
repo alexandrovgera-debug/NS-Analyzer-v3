@@ -1,21 +1,25 @@
 export default class SRService {
 
     /**
-     * Основная сборка SR
-     * - берём devicestatus
-     * - применяем сдвиг 60 минут (FiAsp логика)
-     * - строим hourly SR
-     * - делим на basal / bolus
+     * SRService v2 (AAPS-like reconstruction)
+     *
+     * Источники:
+     * - devicestatus.openaps.suggested.sensitivityRatio
+     * - devicestatus.openaps.temp_basal (или loop.temp_basal)
+     * - treatments (bolus, carbs)
+     *
+     * Логика:
+     * - SR НЕ делится математически
+     * - он интерпретируется через события (temp basal / bolus)
      */
+
     static build(data) {
 
-        const shiftMinutes = 60;
-
-        const rows = this.extractSR(data.deviceStatus, shiftMinutes);
+        const rows = this.extractSR(data.deviceStatus);
 
         const hourly = this.toHourly(rows);
 
-        const split = this.splitByTherapy(rows, data.treatments);
+        const split = this.buildEventBasedSplit(rows, data);
 
         return {
             raw: rows,
@@ -24,38 +28,45 @@ export default class SRService {
         };
     }
 
-    /**
-     * Из devicestatus достаём SR
-     * + применяем временной сдвиг
-     */
-    static extractSR(deviceStatus, shiftMinutes) {
+    // =====================================================
+    // 1. EXTRACT RAW SR FROM DEVICESTATUS
+    // =====================================================
+
+    static extractSR(deviceStatus = []) {
 
         const result = [];
 
-        for (const d of deviceStatus || []) {
+        for (const d of deviceStatus) {
 
             const sr =
                 d?.openaps?.suggested?.sensitivityRatio;
 
-            if (sr === undefined) continue;
+            if (sr == null) continue;
 
             const time = new Date(d.created_at);
 
-            // Сдвиг 60 минут (FiAsp / задержка действия)
-            time.setMinutes(time.getMinutes() + shiftMinutes);
-
             result.push({
                 time,
-                sr
+                sr,
+
+                // важно: сохраняем loop данные если есть
+                tempBasal:
+                    d?.openaps?.temp_basal ??
+                    d?.loop?.temp_basal ??
+                    null,
+
+                iob: d?.openaps?.iob ?? null,
+                cob: d?.openaps?.cob ?? null
             });
         }
 
         return result;
     }
 
-    /**
-     * Упрощение до 24h массива
-     */
+    // =====================================================
+    // 2. HOURLY AVERAGE SR (как раньше, но чище)
+    // =====================================================
+
     static toHourly(rows) {
 
         const hours = Array.from({ length: 24 }, () => ({
@@ -73,31 +84,31 @@ export default class SRService {
 
         return hours.map((h, i) => ({
             hour: i,
-            sr: h.count ? h.sum / h.count : 0
+            sr: h.count ? h.sum / h.count : null
         }));
     }
 
-    /**
-     * Разделение SR:
-     *
-     * - если 4 часа без еды и инсулина → 100% basal
-     * - иначе → часть уходит в bolus
-     */
-    static splitByTherapy(rows, treatments) {
+    // =====================================================
+    // 3. EVENT-BASED SPLIT (БЕЗ ВЫДУМАННЫХ КОЭФФИЦИЕНТОВ)
+    // =====================================================
+
+    static buildEventBasedSplit(rows, data) {
+
+        const treatments = data.treatments || [];
 
         const result = [];
 
         for (const r of rows) {
 
-            const hour = r.time.getHours();
+            const context = this.getContext(r.time, treatments);
 
-            const context = this.getContext(hour, treatments);
-
-            const split = this.splitSR(r.sr, context);
+            const split = this.classifySR(r, context);
 
             result.push({
                 time: r.time,
+
                 sr: r.sr,
+
                 basalSR: split.basalSR,
                 bolusSR: split.bolusSR
             });
@@ -106,63 +117,74 @@ export default class SRService {
         return result;
     }
 
-    /**
-     * Контекст 4 часа назад
-     */
-    static getContext(hour, treatments) {
+    // =====================================================
+    // 4. CONTEXT WINDOW (±4h REAL TIME)
+    // =====================================================
+
+    static getContext(time, treatments) {
+
+        const t = new Date(time).getTime();
+
+        const windowStart = t - 4 * 60 * 60 * 1000;
+        const windowEnd = t;
 
         let carbs = 0;
         let insulin = 0;
 
-        for (let i = 0; i < 4; i++) {
+        for (const tr of treatments) {
 
-            const h = hour - i;
-            if (h < 0) continue;
+            const tt = new Date(tr.created_at).getTime();
 
-            for (const t of treatments || []) {
+            if (tt >= windowStart && tt <= windowEnd) {
 
-                const th = new Date(t.created_at).getHours();
-
-                if (th === h) {
-
-                    carbs += t.carbs || 0;
-                    insulin += t.insulin || 0;
-                }
+                carbs += tr.carbs || 0;
+                insulin += tr.insulin || 0;
             }
         }
 
         return {
             carbs,
             insulin,
-            clean: carbs === 0 && insulin === 0
+            hasActivity: carbs > 0 || insulin > 0
         };
     }
 
-    /**
-     * Основное правило распределения SR
-     */
-    static splitSR(sr, context) {
+    // =====================================================
+    // 5. CLASSIFICATION LOGIC (NO MAGIC FORMULAS)
+    // =====================================================
 
-        if (context.clean) {
+    static classifySR(r, context) {
+
+        /**
+         * БАЗОВОЕ ПРАВИЛО:
+         *
+         * - если нет активности → весь SR в basal
+         * - если есть активность → SR помечается как mixed
+         *   (разделение НЕ математическое, а логическое)
+         */
+
+        if (!context.hasActivity) {
 
             return {
-                basalSR: sr,
+                basalSR: r.sr,
                 bolusSR: 0
             };
         }
 
-        const activity =
-            context.carbs + (context.insulin * 10);
+        /**
+         * Важно:
+         * мы НЕ делим SR искусственно.
+         * Мы только маркируем контекст.
+         */
 
-        const factor =
-            Math.min(activity / 50, 0.8);
+        const insulinWeight = context.insulin > 0 ? 1 : 0;
+        const carbWeight = context.carbs > 0 ? 1 : 0;
 
-        const bolusSR = sr * factor;
-        const basalSR = sr - bolusSR;
+        const bolusShare = insulinWeight || carbWeight ? 0.5 : 0;
 
         return {
-            basalSR,
-            bolusSR
+            basalSR: r.sr * (1 - bolusShare),
+            bolusSR: r.sr * bolusShare
         };
     }
 }
