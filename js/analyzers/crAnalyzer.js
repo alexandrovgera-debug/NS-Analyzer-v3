@@ -1,88 +1,106 @@
 export default class CRAnalyzer {
 
-    constructor() {}
+    /**
+     * CR v2 (event-based estimation)
+     *
+     * Идея:
+     * CR = carbs / insulin needed for stabilization window
+     *
+     * Берём:
+     * - treatments (carbs + insulin)
+     * - entries (glucose response)
+     */
 
-    analyze(srData, profile) {
+    analyze(srRows, profile) {
 
-        const crProfile = profile?.cr || [];
+        const carbs = this.extractCarbEvents(srRows);
+        const insulin = this.extractInsulinEvents(srRows);
 
-        const intervals = this.buildIntervals(crProfile);
+        const pairs = this.matchEvents(carbs, insulin);
 
-        const result = [];
+        const cr = this.estimateCR(pairs);
 
-        for (const i of intervals) {
-
-            const srAvg = this.calcAvgSR(srData, i.start, i.end, "bolusSR");
-
-            const currentCR = i.value;
-
-            const suggestedCR =
-                currentCR * this.adjustFactor(srAvg);
-
-            result.push({
-                start: i.start,
-                end: i.end,
-                srAvg,
-                currentCR,
-                suggestedCR
-            });
-        }
-
-        return result;
+        return {
+            current: profile?.cr || null,
+            recommended: cr,
+            samples: pairs.length
+        };
     }
 
-    buildIntervals(profileArray) {
+    // ---------------- CARBS ----------------
 
-        const out = [];
+    extractCarbEvents(rows) {
 
-        for (let i = 0; i < profileArray.length; i++) {
-
-            const cur = profileArray[i];
-            const next = profileArray[i + 1];
-
-            out.push({
-                start: this.toHour(cur.time),
-                end: next ? this.toHour(next.time) : 24,
-                value: cur.value
-            });
-        }
-
-        return out;
+        return rows
+            .filter(r => (r.carbs || 0) > 0)
+            .map(r => ({
+                time: r.time,
+                carbs: r.carbs
+            }));
     }
 
-    calcAvgSR(srData, start, end, field) {
+    // ---------------- INSULIN ----------------
 
-        let sum = 0;
-        let count = 0;
+    extractInsulinEvents(rows) {
 
-        for (const r of srData || []) {
+        return rows
+            .filter(r => (r.insulin || 0) > 0)
+            .map(r => ({
+                time: r.time,
+                insulin: r.insulin
+            }));
+    }
 
-            const h = r.time.getHours();
+    // ---------------- MATCHING ----------------
 
-            if (h >= start && h < end) {
+    matchEvents(carbs, insulin) {
 
-                sum += r[field] || 0;
-                count++;
+        const pairs = [];
+
+        for (const c of carbs) {
+
+            const windowStart = new Date(c.time).getTime();
+            const windowEnd = windowStart + 4 * 60 * 60 * 1000;
+
+            let matchedInsulin = 0;
+
+            for (const i of insulin) {
+
+                const t = new Date(i.time).getTime();
+
+                if (t >= windowStart && t <= windowEnd) {
+                    matchedInsulin += i.insulin;
+                }
+            }
+
+            if (matchedInsulin > 0) {
+
+                pairs.push({
+                    carbs: c.carbs,
+                    insulin: matchedInsulin
+                });
             }
         }
 
-        return count ? sum / count : 0;
+        return pairs;
     }
 
-    adjustFactor(srAvg) {
+    // ---------------- ESTIMATION ----------------
 
-        if (!srAvg) return 1;
+    estimateCR(pairs) {
 
-        // чем выше bolusSR → тем сильнее корректируем CR
-        const v = srAvg;
+        if (!pairs.length) return null;
 
-        return 1 + Math.max(-0.3, Math.min(0.3, v / 2));
-    }
+        let totalCarbs = 0;
+        let totalInsulin = 0;
 
-    toHour(t) {
+        for (const p of pairs) {
+            totalCarbs += p.carbs;
+            totalInsulin += p.insulin;
+        }
 
-        const [h, m] = t.split(":").map(Number);
+        if (totalInsulin === 0) return null;
 
-        return h + m / 60;
+        return totalCarbs / totalInsulin;
     }
 }
